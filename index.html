@@ -8,6 +8,11 @@
     <meta name="theme-color" content="#1a1a2e">
     <title>PSet Tracker</title>
     <link rel="manifest" href="data:application/json,{&quot;name&quot;:&quot;PSet Tracker&quot;,&quot;short_name&quot;:&quot;PSets&quot;,&quot;start_url&quot;:&quot;.&quot;,&quot;display&quot;:&quot;standalone&quot;,&quot;background_color&quot;:&quot;%231a1a2e&quot;,&quot;theme_color&quot;:&quot;%231a1a2e&quot;}">
+
+    <!-- Firebase SDK -->
+    <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore-compat.js"></script>
+
     <style>
         * {
             box-sizing: border-box;
@@ -25,18 +30,161 @@
         }
 
         .container {
-            max-width: 600px;
+            max-width: 700px;
             margin: 0 auto;
         }
 
+        header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 20px;
+        }
+
         h1 {
-            text-align: center;
-            margin-bottom: 24px;
             font-weight: 600;
             font-size: 1.8rem;
             color: #fff;
         }
 
+        .header-actions {
+            display: flex;
+            gap: 8px;
+            align-items: center;
+        }
+
+        .header-btn {
+            background: #2a2a4a;
+            border: 1px solid #3a3a5a;
+            color: #a0a0a0;
+            padding: 8px 12px;
+            border-radius: 8px;
+            cursor: pointer;
+            font-size: 0.85rem;
+            transition: all 0.2s;
+        }
+
+        .header-btn:hover {
+            background: #3a3a5a;
+            color: #fff;
+        }
+
+        .header-btn.undo {
+            color: #667eea;
+        }
+
+        .header-btn.undo:disabled {
+            opacity: 0.4;
+            cursor: not-allowed;
+        }
+
+        /* Sync Status */
+        .sync-status {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            font-size: 0.8rem;
+            padding: 6px 10px;
+            border-radius: 20px;
+            background: #2a2a4a;
+        }
+
+        .sync-dot {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            background: #666;
+        }
+
+        .sync-status.synced .sync-dot {
+            background: #4ade80;
+        }
+
+        .sync-status.syncing .sync-dot {
+            background: #fbbf24;
+            animation: pulse 1s infinite;
+        }
+
+        .sync-status.offline .sync-dot {
+            background: #f87171;
+        }
+
+        .sync-status.not-setup .sync-dot {
+            background: #666;
+        }
+
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.5; }
+        }
+
+        /* Stats Panel */
+        .stats-panel {
+            background: #1f1f3a;
+            border-radius: 12px;
+            padding: 16px;
+            margin-bottom: 20px;
+            display: grid;
+            grid-template-columns: repeat(4, 1fr);
+            gap: 12px;
+        }
+
+        .stat-item {
+            text-align: center;
+        }
+
+        .stat-value {
+            font-size: 1.5rem;
+            font-weight: 700;
+            color: #667eea;
+        }
+
+        .stat-label {
+            font-size: 0.75rem;
+            color: #a0a0a0;
+            margin-top: 2px;
+        }
+
+        /* Filters */
+        .filters {
+            display: flex;
+            gap: 8px;
+            margin-bottom: 16px;
+            flex-wrap: wrap;
+        }
+
+        .filter-btn {
+            background: #2a2a4a;
+            border: 1px solid #3a3a5a;
+            color: #a0a0a0;
+            padding: 6px 12px;
+            border-radius: 20px;
+            cursor: pointer;
+            font-size: 0.85rem;
+            transition: all 0.2s;
+        }
+
+        .filter-btn:hover {
+            background: #3a3a5a;
+        }
+
+        .filter-btn.active {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: #fff;
+            border-color: transparent;
+        }
+
+        .course-filter {
+            background: #2a2a4a;
+            border: 1px solid #3a3a5a;
+            color: #e8e8e8;
+            padding: 6px 12px;
+            border-radius: 20px;
+            font-size: 0.85rem;
+            cursor: pointer;
+        }
+
+        /* Add Button */
         .add-btn {
             position: fixed;
             bottom: 24px;
@@ -76,6 +224,7 @@
             align-items: center;
             justify-content: center;
             padding: 20px;
+            overflow-y: auto;
         }
 
         .modal-overlay.active {
@@ -87,8 +236,10 @@
             border-radius: 16px;
             padding: 24px;
             width: 100%;
-            max-width: 400px;
+            max-width: 500px;
             box-shadow: 0 10px 40px rgba(0, 0, 0, 0.5);
+            max-height: 90vh;
+            overflow-y: auto;
         }
 
         .modal h2 {
@@ -107,7 +258,7 @@
             color: #a0a0a0;
         }
 
-        .form-group input {
+        .form-group input, .form-group select, .form-group textarea {
             width: 100%;
             padding: 12px;
             border: 1px solid #3a3a5a;
@@ -117,9 +268,21 @@
             font-size: 1rem;
         }
 
-        .form-group input:focus {
+        .form-group textarea {
+            resize: vertical;
+            min-height: 60px;
+            font-family: inherit;
+        }
+
+        .form-group input:focus, .form-group select:focus, .form-group textarea:focus {
             outline: none;
             border-color: #667eea;
+        }
+
+        .form-row {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 12px;
         }
 
         .modal-actions {
@@ -148,6 +311,11 @@
             color: #fff;
         }
 
+        .btn-danger {
+            background: #dc2626;
+            color: #fff;
+        }
+
         .modal-actions button:hover {
             opacity: 0.9;
         }
@@ -164,6 +332,21 @@
             border-radius: 12px;
             padding: 16px;
             box-shadow: 0 4px 15px rgba(0, 0, 0, 0.2);
+            cursor: grab;
+            transition: transform 0.2s, box-shadow 0.2s;
+        }
+
+        .task-card:active {
+            cursor: grabbing;
+        }
+
+        .task-card.dragging {
+            opacity: 0.5;
+            transform: scale(1.02);
+        }
+
+        .task-card.drag-over {
+            border: 2px dashed #667eea;
         }
 
         .task-header {
@@ -173,10 +356,20 @@
             margin-bottom: 12px;
         }
 
+        .task-info {
+            flex: 1;
+        }
+
         .task-name {
             font-size: 1.1rem;
             font-weight: 600;
             color: #fff;
+        }
+
+        .task-course {
+            font-size: 0.8rem;
+            color: #667eea;
+            margin-top: 2px;
         }
 
         .task-due {
@@ -193,18 +386,33 @@
             color: #ffd93d;
         }
 
-        .delete-btn {
+        .task-actions {
+            display: flex;
+            gap: 4px;
+        }
+
+        .task-action-btn {
             background: none;
             border: none;
             color: #666;
             cursor: pointer;
-            font-size: 1.2rem;
+            font-size: 1rem;
             padding: 4px 8px;
             transition: color 0.2s;
+            border-radius: 4px;
         }
 
-        .delete-btn:hover {
+        .task-action-btn:hover {
+            color: #fff;
+            background: #3a3a5a;
+        }
+
+        .task-action-btn.delete:hover {
             color: #ff6b6b;
+        }
+
+        .task-action-btn.archive:hover {
+            color: #4ade80;
         }
 
         /* Progress Section */
@@ -246,52 +454,17 @@
             background: linear-gradient(90deg, #4ade80 0%, #22c55e 100%);
         }
 
-        /* Controls */
-        .task-controls {
+        /* Pace Info */
+        .task-footer {
             display: flex;
-            align-items: center;
             justify-content: space-between;
-            margin-top: 12px;
-        }
-
-        .counter-controls {
-            display: flex;
             align-items: center;
-            gap: 12px;
-        }
-
-        .counter-btn {
-            width: 36px;
-            height: 36px;
-            border-radius: 50%;
-            border: none;
-            background: #3a3a5a;
-            color: #fff;
-            font-size: 1.2rem;
-            cursor: pointer;
-            transition: background 0.2s;
-        }
-
-        .counter-btn:hover {
-            background: #4a4a6a;
-        }
-
-        .counter-btn:active {
-            background: #5a5a7a;
-        }
-
-        .counter-btn.plus {
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-        }
-
-        .counter-btn.plus:hover {
-            opacity: 0.9;
+            margin-top: 12px;
         }
 
         .pace-info {
             font-size: 0.85rem;
             color: #a0a0a0;
-            text-align: right;
         }
 
         .pace-value {
@@ -299,12 +472,160 @@
             font-weight: 600;
         }
 
-        .pace-info.on-track {
+        .pace-info.on-track .pace-value {
             color: #4ade80;
         }
 
-        .pace-info.behind {
+        .pace-info.behind .pace-value {
             color: #ff6b6b;
+        }
+
+        .time-spent {
+            font-size: 0.8rem;
+            color: #a0a0a0;
+        }
+
+        /* Problems List */
+        .problems-toggle {
+            background: #2a2a4a;
+            border: none;
+            color: #a0a0a0;
+            padding: 8px 12px;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 0.85rem;
+            width: 100%;
+            text-align: left;
+            margin-top: 12px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .problems-toggle:hover {
+            background: #3a3a5a;
+        }
+
+        .problems-list {
+            display: none;
+            margin-top: 12px;
+            border-top: 1px solid #3a3a5a;
+            padding-top: 12px;
+        }
+
+        .problems-list.expanded {
+            display: block;
+        }
+
+        .problem-item {
+            display: flex;
+            align-items: flex-start;
+            gap: 10px;
+            padding: 10px;
+            background: #2a2a4a;
+            border-radius: 8px;
+            margin-bottom: 8px;
+        }
+
+        .problem-item:last-child {
+            margin-bottom: 0;
+        }
+
+        .problem-checkbox {
+            width: 20px;
+            height: 20px;
+            cursor: pointer;
+            accent-color: #667eea;
+            flex-shrink: 0;
+            margin-top: 2px;
+        }
+
+        .problem-content {
+            flex: 1;
+            min-width: 0;
+        }
+
+        .problem-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 4px;
+        }
+
+        .problem-number {
+            font-weight: 600;
+            color: #fff;
+            font-size: 0.9rem;
+        }
+
+        .problem-number.completed {
+            text-decoration: line-through;
+            color: #4ade80;
+        }
+
+        .problem-meta {
+            display: flex;
+            gap: 8px;
+            align-items: center;
+        }
+
+        .difficulty-badge {
+            font-size: 0.7rem;
+            padding: 2px 6px;
+            border-radius: 4px;
+            font-weight: 600;
+        }
+
+        .difficulty-badge.easy {
+            background: #22c55e33;
+            color: #4ade80;
+        }
+
+        .difficulty-badge.medium {
+            background: #f59e0b33;
+            color: #fbbf24;
+        }
+
+        .difficulty-badge.hard {
+            background: #ef444433;
+            color: #f87171;
+        }
+
+        .time-badge {
+            font-size: 0.75rem;
+            color: #a0a0a0;
+        }
+
+        .problem-notes {
+            font-size: 0.8rem;
+            color: #a0a0a0;
+            margin-top: 4px;
+            font-style: italic;
+        }
+
+        .problem-actions {
+            display: flex;
+            gap: 4px;
+            flex-shrink: 0;
+        }
+
+        .problem-action-btn {
+            background: #3a3a5a;
+            border: none;
+            color: #a0a0a0;
+            width: 28px;
+            height: 28px;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 0.8rem;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .problem-action-btn:hover {
+            background: #4a4a6a;
+            color: #fff;
         }
 
         /* Empty State */
@@ -322,7 +643,7 @@
             font-size: 0.9rem;
         }
 
-        /* Completed task */
+        /* Completed/Archived task */
         .task-card.completed {
             opacity: 0.7;
         }
@@ -331,11 +652,174 @@
             text-decoration: line-through;
             color: #4ade80;
         }
+
+        .task-card.archived {
+            opacity: 0.5;
+            border: 1px dashed #3a3a5a;
+        }
+
+        /* Setup instructions */
+        .setup-instructions {
+            background: #2a2a4a;
+            border-radius: 8px;
+            padding: 16px;
+            margin-bottom: 16px;
+            font-size: 0.9rem;
+            line-height: 1.6;
+        }
+
+        .setup-instructions ol {
+            margin-left: 20px;
+            margin-top: 8px;
+        }
+
+        .setup-instructions li {
+            margin-bottom: 8px;
+        }
+
+        .setup-instructions a {
+            color: #667eea;
+        }
+
+        .setup-instructions code {
+            background: #1a1a2e;
+            padding: 2px 6px;
+            border-radius: 4px;
+            font-size: 0.85rem;
+        }
+
+        /* Config textarea */
+        .config-textarea {
+            width: 100%;
+            min-height: 150px;
+            padding: 12px;
+            border: 1px solid #3a3a5a;
+            border-radius: 8px;
+            background: #2a2a4a;
+            color: #fff;
+            font-family: monospace;
+            font-size: 0.85rem;
+            resize: vertical;
+        }
+
+        .config-textarea:focus {
+            outline: none;
+            border-color: #667eea;
+        }
+
+        /* Problem Edit Modal */
+        .difficulty-select {
+            display: flex;
+            gap: 8px;
+        }
+
+        .difficulty-option {
+            flex: 1;
+            padding: 10px;
+            border: 2px solid #3a3a5a;
+            border-radius: 8px;
+            background: #2a2a4a;
+            color: #a0a0a0;
+            cursor: pointer;
+            text-align: center;
+            font-size: 0.9rem;
+            transition: all 0.2s;
+        }
+
+        .difficulty-option:hover {
+            border-color: #667eea;
+        }
+
+        .difficulty-option.selected {
+            border-color: #667eea;
+            color: #fff;
+        }
+
+        .difficulty-option.easy.selected {
+            border-color: #4ade80;
+            background: #22c55e22;
+        }
+
+        .difficulty-option.medium.selected {
+            border-color: #fbbf24;
+            background: #f59e0b22;
+        }
+
+        .difficulty-option.hard.selected {
+            border-color: #f87171;
+            background: #ef444422;
+        }
+
+        .sync-connected {
+            background: #22c55e22;
+            border: 1px solid #4ade80;
+            border-radius: 8px;
+            padding: 12px;
+            margin-bottom: 16px;
+            color: #4ade80;
+            font-size: 0.9rem;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        /* Responsive */
+        @media (max-width: 500px) {
+            .stats-panel {
+                grid-template-columns: repeat(2, 1fr);
+            }
+
+            .form-row {
+                grid-template-columns: 1fr;
+            }
+
+            .header-actions {
+                flex-wrap: wrap;
+            }
+        }
     </style>
 </head>
 <body>
     <div class="container">
-        <h1>📚 PSet Tracker</h1>
+        <header>
+            <h1>📚 PSet Tracker</h1>
+            <div class="header-actions">
+                <div class="sync-status not-setup" id="sync-status" title="Click to setup sync">
+                    <span class="sync-dot"></span>
+                    <span class="sync-text">Not synced</span>
+                </div>
+                <button class="header-btn undo" id="undo-btn" disabled title="Undo last action">↶ Undo</button>
+            </div>
+        </header>
+
+        <div class="stats-panel" id="stats-panel">
+            <div class="stat-item">
+                <div class="stat-value" id="stat-active">0</div>
+                <div class="stat-label">Active PSets</div>
+            </div>
+            <div class="stat-item">
+                <div class="stat-value" id="stat-completed">0</div>
+                <div class="stat-label">Completed</div>
+            </div>
+            <div class="stat-item">
+                <div class="stat-value" id="stat-problems">0</div>
+                <div class="stat-label">Problems Done</div>
+            </div>
+            <div class="stat-item">
+                <div class="stat-value" id="stat-time">0h</div>
+                <div class="stat-label">Time Logged</div>
+            </div>
+        </div>
+
+        <div class="filters" id="filters">
+            <button class="filter-btn active" data-filter="active">Active</button>
+            <button class="filter-btn" data-filter="archived">Archived</button>
+            <button class="filter-btn" data-filter="all">All</button>
+            <select class="course-filter" id="course-filter">
+                <option value="">All Courses</option>
+            </select>
+        </div>
+
         <div class="tasks" id="tasks"></div>
         <div class="empty-state" id="empty-state">
             <p>No problem sets yet</p>
@@ -345,6 +829,7 @@
 
     <button class="add-btn" id="add-btn">+</button>
 
+    <!-- Add/Edit PSet Modal -->
     <div class="modal-overlay" id="modal">
         <div class="modal">
             <h2 id="modal-title">Add Problem Set</h2>
@@ -353,16 +838,19 @@
                 <input type="text" id="task-name" placeholder="e.g., Abstract Algebra HW 5">
             </div>
             <div class="form-group">
-                <label for="task-problems">Number of Problems</label>
-                <input type="number" id="task-problems" min="1" value="5">
+                <label for="task-course">Course (optional)</label>
+                <input type="text" id="task-course" placeholder="e.g., Math 55" list="course-list">
+                <datalist id="course-list"></datalist>
             </div>
-            <div class="form-group">
-                <label for="task-due">Due Date</label>
-                <input type="date" id="task-due">
-            </div>
-            <div class="form-group">
-                <label for="task-start">Start Date (optional)</label>
-                <input type="date" id="task-start">
+            <div class="form-row">
+                <div class="form-group">
+                    <label for="task-problems">Number of Problems</label>
+                    <input type="number" id="task-problems" min="1" value="5">
+                </div>
+                <div class="form-group">
+                    <label for="task-due">Due Date</label>
+                    <input type="date" id="task-due">
+                </div>
             </div>
             <div class="modal-actions">
                 <button class="btn-cancel" id="btn-cancel">Cancel</button>
@@ -371,10 +859,91 @@
         </div>
     </div>
 
+    <!-- Sync Setup Modal -->
+    <div class="modal-overlay" id="sync-modal">
+        <div class="modal">
+            <h2>Setup Cloud Sync</h2>
+
+            <div class="sync-connected" id="sync-connected" style="display: none;">
+                ✓ Connected and syncing
+            </div>
+
+            <div id="setup-form">
+                <div class="setup-instructions">
+                    <strong>One-time setup (5 minutes):</strong>
+                    <ol>
+                        <li>Go to <a href="https://console.firebase.google.com/" target="_blank">Firebase Console</a></li>
+                        <li>Click "Create a project" (or use existing)</li>
+                        <li>Once created, click the web icon <code>&lt;/&gt;</code> to add a web app</li>
+                        <li>Give it a nickname (e.g., "PSet Tracker")</li>
+                        <li>Copy the <code>firebaseConfig</code> object and paste below</li>
+                        <li>Go to "Firestore Database" in sidebar → "Create database" → Start in test mode</li>
+                    </ol>
+                </div>
+
+                <div class="form-group">
+                    <label>Paste your Firebase config here:</label>
+                    <textarea class="config-textarea" id="firebase-config" placeholder='const firebaseConfig = {
+  apiKey: "...",
+  authDomain: "...",
+  projectId: "...",
+  storageBucket: "...",
+  messagingSenderId: "...",
+  appId: "..."
+};'></textarea>
+                </div>
+            </div>
+
+            <div class="modal-actions">
+                <button class="btn-cancel" id="sync-close">Close</button>
+                <button class="btn-save" id="sync-connect">Connect</button>
+                <button class="btn-danger" id="sync-disconnect" style="display: none;">Disconnect</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Problem Edit Modal -->
+    <div class="modal-overlay" id="problem-modal">
+        <div class="modal">
+            <h2 id="problem-modal-title">Edit Problem</h2>
+            <div class="form-group">
+                <label>Difficulty</label>
+                <div class="difficulty-select" id="difficulty-select">
+                    <div class="difficulty-option easy" data-difficulty="easy">Easy</div>
+                    <div class="difficulty-option medium" data-difficulty="medium">Medium</div>
+                    <div class="difficulty-option hard" data-difficulty="hard">Hard</div>
+                </div>
+            </div>
+            <div class="form-group">
+                <label for="problem-time">Time Spent (minutes)</label>
+                <input type="number" id="problem-time" min="0" value="0">
+            </div>
+            <div class="form-group">
+                <label for="problem-notes">Notes</label>
+                <textarea id="problem-notes" placeholder="Add notes about this problem..."></textarea>
+            </div>
+            <div class="modal-actions">
+                <button class="btn-cancel" id="problem-cancel">Cancel</button>
+                <button class="btn-save" id="problem-save">Save</button>
+            </div>
+        </div>
+    </div>
+
     <script>
         // State
-        let tasks = JSON.parse(localStorage.getItem('pset-tasks')) || [];
+        let tasks = [];
+        let undoStack = [];
         let editingId = null;
+        let editingProblem = null;
+        let currentFilter = 'active';
+        let currentCourse = '';
+        let draggedCard = null;
+
+        // Firebase state
+        let db = null;
+        let unsubscribe = null;
+        let syncEnabled = false;
+        let isRemoteUpdate = false;
 
         // Elements
         const tasksContainer = document.getElementById('tasks');
@@ -385,15 +954,247 @@
         const cancelBtn = document.getElementById('btn-cancel');
         const saveBtn = document.getElementById('btn-save');
         const nameInput = document.getElementById('task-name');
+        const courseInput = document.getElementById('task-course');
         const problemsInput = document.getElementById('task-problems');
         const dueInput = document.getElementById('task-due');
-        const startInput = document.getElementById('task-start');
+        const undoBtn = document.getElementById('undo-btn');
+        const syncStatus = document.getElementById('sync-status');
+        const syncModal = document.getElementById('sync-modal');
+        const syncConnected = document.getElementById('sync-connected');
+        const setupForm = document.getElementById('setup-form');
+        const firebaseConfigInput = document.getElementById('firebase-config');
+        const syncClose = document.getElementById('sync-close');
+        const syncConnect = document.getElementById('sync-connect');
+        const syncDisconnect = document.getElementById('sync-disconnect');
+        const problemModal = document.getElementById('problem-modal');
+        const problemModalTitle = document.getElementById('problem-modal-title');
+        const difficultySelect = document.getElementById('difficulty-select');
+        const problemTime = document.getElementById('problem-time');
+        const problemNotes = document.getElementById('problem-notes');
+        const problemCancel = document.getElementById('problem-cancel');
+        const problemSave = document.getElementById('problem-save');
+        const courseFilter = document.getElementById('course-filter');
+        const courseList = document.getElementById('course-list');
 
-        // Helpers
-        function saveTasks() {
-            localStorage.setItem('pset-tasks', JSON.stringify(tasks));
+        // Initialize
+        function init() {
+            loadTasks();
+            initFirebase();
+            render();
+            updateStats();
+            updateCourseFilter();
         }
 
+        // Firebase functions
+        function initFirebase() {
+            const savedConfig = localStorage.getItem('firebase-config');
+            if (savedConfig) {
+                try {
+                    connectFirebase(JSON.parse(savedConfig));
+                } catch (e) {
+                    console.error('Failed to init Firebase:', e);
+                    updateSyncStatus('offline');
+                }
+            }
+        }
+
+        function parseFirebaseConfig(input) {
+            // Try to extract the config object from various formats
+            let configStr = input.trim();
+
+            // Remove variable declaration if present
+            configStr = configStr.replace(/^(const|let|var)\s+\w+\s*=\s*/, '');
+
+            // Remove trailing semicolon
+            configStr = configStr.replace(/;$/, '');
+
+            // Try to parse as JSON (may need to add quotes to keys)
+            try {
+                return JSON.parse(configStr);
+            } catch (e) {
+                // Try to convert JS object literal to JSON
+                configStr = configStr.replace(/(\w+):/g, '"$1":');
+                configStr = configStr.replace(/'/g, '"');
+                return JSON.parse(configStr);
+            }
+        }
+
+        function connectFirebase(config) {
+            try {
+                // Initialize Firebase
+                if (!firebase.apps.length) {
+                    firebase.initializeApp(config);
+                }
+                db = firebase.firestore();
+
+                // Save config for future use
+                localStorage.setItem('firebase-config', JSON.stringify(config));
+
+                // Setup real-time listener
+                setupRealtimeSync();
+
+                syncEnabled = true;
+                updateSyncStatus('synced');
+
+                // Update modal UI
+                syncConnected.style.display = 'flex';
+                setupForm.style.display = 'none';
+                syncConnect.style.display = 'none';
+                syncDisconnect.style.display = 'block';
+
+            } catch (e) {
+                console.error('Firebase connection error:', e);
+                alert('Failed to connect: ' + e.message);
+                updateSyncStatus('offline');
+            }
+        }
+
+        function setupRealtimeSync() {
+            // Use a fixed document for this user's data
+            const docRef = db.collection('pset-tracker').doc('user-data');
+
+            // Listen for changes
+            unsubscribe = docRef.onSnapshot((doc) => {
+                if (doc.exists) {
+                    const data = doc.data();
+                    if (data.tasks && data.lastUpdated) {
+                        const localLastUpdated = localStorage.getItem('last-updated') || '0';
+
+                        // Only update if remote is newer and not our own update
+                        if (data.lastUpdated > localLastUpdated && !isRemoteUpdate) {
+                            isRemoteUpdate = true;
+                            tasks = data.tasks;
+                            localStorage.setItem('pset-tasks-v2', JSON.stringify(tasks));
+                            localStorage.setItem('last-updated', data.lastUpdated);
+                            render();
+                            updateStats();
+                            updateCourseFilter();
+                            isRemoteUpdate = false;
+                        }
+                    }
+                }
+                updateSyncStatus('synced');
+            }, (error) => {
+                console.error('Firestore error:', error);
+                updateSyncStatus('offline');
+            });
+        }
+
+        async function syncToFirebase() {
+            if (!syncEnabled || !db) return;
+
+            updateSyncStatus('syncing');
+
+            try {
+                const timestamp = Date.now().toString();
+                await db.collection('pset-tracker').doc('user-data').set({
+                    tasks: tasks,
+                    lastUpdated: timestamp
+                });
+                localStorage.setItem('last-updated', timestamp);
+                updateSyncStatus('synced');
+            } catch (e) {
+                console.error('Sync error:', e);
+                updateSyncStatus('offline');
+            }
+        }
+
+        function disconnectFirebase() {
+            if (unsubscribe) {
+                unsubscribe();
+                unsubscribe = null;
+            }
+            syncEnabled = false;
+            db = null;
+            localStorage.removeItem('firebase-config');
+            updateSyncStatus('not-setup');
+
+            // Update modal UI
+            syncConnected.style.display = 'none';
+            setupForm.style.display = 'block';
+            syncConnect.style.display = 'block';
+            syncDisconnect.style.display = 'none';
+            firebaseConfigInput.value = '';
+        }
+
+        function updateSyncStatus(status) {
+            syncStatus.className = 'sync-status ' + status;
+            const textEl = syncStatus.querySelector('.sync-text');
+            switch (status) {
+                case 'synced':
+                    textEl.textContent = 'Synced';
+                    break;
+                case 'syncing':
+                    textEl.textContent = 'Syncing...';
+                    break;
+                case 'offline':
+                    textEl.textContent = 'Offline';
+                    break;
+                default:
+                    textEl.textContent = 'Not synced';
+            }
+        }
+
+        // Data persistence
+        function loadTasks() {
+            const stored = localStorage.getItem('pset-tasks-v2');
+            if (stored) {
+                tasks = JSON.parse(stored);
+            } else {
+                // Migrate from old format
+                const oldTasks = JSON.parse(localStorage.getItem('pset-tasks') || '[]');
+                tasks = oldTasks.map(migrateTask);
+                if (tasks.length > 0) saveTasks();
+            }
+        }
+
+        function migrateTask(oldTask) {
+            const problems = [];
+            for (let i = 0; i < oldTask.total; i++) {
+                problems.push({
+                    completed: i < oldTask.completed,
+                    timeSpent: 0,
+                    difficulty: null,
+                    notes: ''
+                });
+            }
+            return {
+                id: oldTask.id,
+                name: oldTask.name,
+                course: '',
+                dueDate: oldTask.dueDate,
+                startDate: oldTask.startDate || new Date().toISOString().split('T')[0],
+                archived: false,
+                problems: problems,
+                order: Date.now()
+            };
+        }
+
+        function saveTasks() {
+            localStorage.setItem('pset-tasks-v2', JSON.stringify(tasks));
+            if (syncEnabled && !isRemoteUpdate) {
+                syncToFirebase();
+            }
+        }
+
+        function saveWithUndo() {
+            undoStack.push(JSON.stringify(tasks));
+            if (undoStack.length > 20) undoStack.shift();
+            undoBtn.disabled = false;
+            saveTasks();
+        }
+
+        function undo() {
+            if (undoStack.length === 0) return;
+            tasks = JSON.parse(undoStack.pop());
+            saveTasks();
+            render();
+            updateStats();
+            updateCourseFilter();
+            undoBtn.disabled = undoStack.length === 0;
+        }
+
+        // Helpers
         function formatDate(dateStr) {
             const date = new Date(dateStr + 'T00:00:00');
             return date.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' });
@@ -403,32 +1204,55 @@
             const today = new Date();
             today.setHours(0, 0, 0, 0);
             const due = new Date(dateStr + 'T00:00:00');
-            const diff = Math.ceil((due - today) / (1000 * 60 * 60 * 24));
-            return diff;
+            return Math.ceil((due - today) / (1000 * 60 * 60 * 24));
         }
 
-        function getDaysBetween(startStr, endStr) {
-            const start = new Date(startStr + 'T00:00:00');
-            const end = new Date(endStr + 'T00:00:00');
-            return Math.max(1, Math.ceil((end - start) / (1000 * 60 * 60 * 24)));
+        function getCompletedCount(task) {
+            return task.problems.filter(p => p.completed).length;
+        }
+
+        function getTotalTime(task) {
+            return task.problems.reduce((sum, p) => sum + (p.timeSpent || 0), 0);
+        }
+
+        function formatTime(minutes) {
+            if (minutes < 60) return `${minutes}m`;
+            const hours = Math.floor(minutes / 60);
+            const mins = minutes % 60;
+            return mins > 0 ? `${hours}h ${mins}m` : `${hours}h`;
         }
 
         function calculatePace(task) {
-            const remaining = task.total - task.completed;
+            const completed = getCompletedCount(task);
+            const remaining = task.problems.length - completed;
             const daysLeft = getDaysUntil(task.dueDate);
-            
+
             if (remaining === 0) return { text: 'Done! 🎉', status: 'on-track' };
             if (daysLeft <= 0) return { text: `${remaining} overdue!`, status: 'behind' };
-            
-            const pace = remaining / daysLeft;
-            
-            if (pace <= 1) {
-                return { text: `${pace.toFixed(1)}/day`, status: 'on-track' };
-            } else if (pace <= 2) {
-                return { text: `${pace.toFixed(1)}/day`, status: '' };
+
+            const avgPace = remaining / daysLeft;
+            let text;
+
+            if (remaining <= daysLeft) {
+                if (remaining === daysLeft) {
+                    text = '1/day';
+                } else {
+                    const interval = Math.ceil(daysLeft / remaining);
+                    text = `1 every ${interval} days`;
+                }
             } else {
-                return { text: `${pace.toFixed(1)}/day`, status: 'behind' };
+                const basePerDay = Math.floor(remaining / daysLeft);
+                const extraDays = remaining % daysLeft;
+
+                if (extraDays === 0) {
+                    text = `${basePerDay}/day`;
+                } else {
+                    text = `${basePerDay}-${basePerDay + 1}/day`;
+                }
             }
+
+            const status = avgPace <= 1 ? 'on-track' : avgPace <= 2 ? '' : 'behind';
+            return { text, status };
         }
 
         function getDueClass(daysUntil) {
@@ -445,75 +1269,243 @@
             return `Due ${formatDate(dateStr)} (${daysUntil} days)`;
         }
 
-        // Render
-        function render() {
-            emptyState.style.display = tasks.length === 0 ? 'block' : 'none';
-            
-            // Sort: incomplete first (by due date), then completed
-            const sorted = [...tasks].sort((a, b) => {
-                const aComplete = a.completed >= a.total;
-                const bComplete = b.completed >= b.total;
+        function getCourses() {
+            const courses = new Set();
+            tasks.forEach(t => {
+                if (t.course) courses.add(t.course);
+            });
+            return Array.from(courses).sort();
+        }
+
+        // Stats
+        function updateStats() {
+            const active = tasks.filter(t => !t.archived && getCompletedCount(t) < t.problems.length);
+            const completed = tasks.filter(t => !t.archived && getCompletedCount(t) >= t.problems.length);
+            const totalProblems = tasks.reduce((sum, t) => sum + getCompletedCount(t), 0);
+            const totalTime = tasks.reduce((sum, t) => sum + getTotalTime(t), 0);
+
+            document.getElementById('stat-active').textContent = active.length;
+            document.getElementById('stat-completed').textContent = completed.length;
+            document.getElementById('stat-problems').textContent = totalProblems;
+            document.getElementById('stat-time').textContent = formatTime(totalTime);
+        }
+
+        function updateCourseFilter() {
+            const courses = getCourses();
+            courseFilter.innerHTML = '<option value="">All Courses</option>' +
+                courses.map(c => `<option value="${c}"${currentCourse === c ? ' selected' : ''}>${c}</option>`).join('');
+            courseList.innerHTML = courses.map(c => `<option value="${c}">`).join('');
+        }
+
+        // Filtering
+        function getFilteredTasks() {
+            return tasks.filter(task => {
+                const completed = getCompletedCount(task) >= task.problems.length;
+
+                if (currentFilter === 'active' && (task.archived || completed)) return false;
+                if (currentFilter === 'archived' && !task.archived) return false;
+
+                if (currentCourse && task.course !== currentCourse) return false;
+
+                return true;
+            }).sort((a, b) => {
+                if (a.archived !== b.archived) return a.archived ? 1 : -1;
+                const aComplete = getCompletedCount(a) >= a.problems.length;
+                const bComplete = getCompletedCount(b) >= b.problems.length;
                 if (aComplete !== bComplete) return aComplete ? 1 : -1;
+                if (a.order && b.order) return a.order - b.order;
                 return new Date(a.dueDate) - new Date(b.dueDate);
             });
+        }
 
-            tasksContainer.innerHTML = sorted.map(task => {
-                const percent = Math.round((task.completed / task.total) * 100);
-                const isComplete = task.completed >= task.total;
+        // Render
+        function render() {
+            const filtered = getFilteredTasks();
+            emptyState.style.display = filtered.length === 0 ? 'block' : 'none';
+
+            tasksContainer.innerHTML = filtered.map(task => {
+                const completed = getCompletedCount(task);
+                const total = task.problems.length;
+                const percent = Math.round((completed / total) * 100);
+                const isComplete = completed >= total;
                 const daysUntil = getDaysUntil(task.dueDate);
                 const pace = calculatePace(task);
-                
+                const timeSpent = getTotalTime(task);
+
                 return `
-                    <div class="task-card ${isComplete ? 'completed' : ''}" data-id="${task.id}">
+                    <div class="task-card ${isComplete ? 'completed' : ''} ${task.archived ? 'archived' : ''}"
+                         data-id="${task.id}" draggable="true">
                         <div class="task-header">
-                            <div>
-                                <div class="task-name">${task.name}</div>
+                            <div class="task-info">
+                                <div class="task-name">${escapeHtml(task.name)}</div>
+                                ${task.course ? `<div class="task-course">${escapeHtml(task.course)}</div>` : ''}
                                 <div class="task-due ${getDueClass(daysUntil)}">${getDueText(daysUntil, task.dueDate)}</div>
                             </div>
-                            <button class="delete-btn" onclick="deleteTask('${task.id}')">×</button>
+                            <div class="task-actions">
+                                <button class="task-action-btn" onclick="openModal('${task.id}')" title="Edit">✎</button>
+                                <button class="task-action-btn archive" onclick="toggleArchive('${task.id}')" title="${task.archived ? 'Unarchive' : 'Archive'}">
+                                    ${task.archived ? '↑' : '↓'}
+                                </button>
+                                <button class="task-action-btn delete" onclick="deleteTask('${task.id}')" title="Delete">×</button>
+                            </div>
                         </div>
                         <div class="progress-section">
                             <div class="progress-info">
-                                <span class="progress-count">${task.completed} / ${task.total} problems</span>
+                                <span class="progress-count">${completed} / ${total} problems</span>
                                 <span class="progress-percent">${percent}%</span>
                             </div>
                             <div class="progress-bar">
                                 <div class="progress-fill ${isComplete ? 'complete' : ''}" style="width: ${percent}%"></div>
                             </div>
                         </div>
-                        <div class="task-controls">
-                            <div class="counter-controls">
-                                <button class="counter-btn" onclick="updateProgress('${task.id}', -1)">−</button>
-                                <button class="counter-btn plus" onclick="updateProgress('${task.id}', 1)">+</button>
-                            </div>
+                        <div class="task-footer">
                             <div class="pace-info ${pace.status}">
                                 Pace: <span class="pace-value">${pace.text}</span>
                             </div>
+                            ${timeSpent > 0 ? `<div class="time-spent">⏱ ${formatTime(timeSpent)}</div>` : ''}
+                        </div>
+                        <button class="problems-toggle" onclick="toggleProblems('${task.id}')">
+                            <span>Problems</span>
+                            <span class="toggle-arrow">▼</span>
+                        </button>
+                        <div class="problems-list" id="problems-${task.id}">
+                            ${task.problems.map((p, i) => `
+                                <div class="problem-item">
+                                    <input type="checkbox" class="problem-checkbox"
+                                           ${p.completed ? 'checked' : ''}
+                                           onchange="toggleProblem('${task.id}', ${i})">
+                                    <div class="problem-content">
+                                        <div class="problem-header">
+                                            <span class="problem-number ${p.completed ? 'completed' : ''}">Problem ${i + 1}</span>
+                                            <div class="problem-meta">
+                                                ${p.difficulty ? `<span class="difficulty-badge ${p.difficulty}">${p.difficulty}</span>` : ''}
+                                                ${p.timeSpent ? `<span class="time-badge">⏱ ${formatTime(p.timeSpent)}</span>` : ''}
+                                            </div>
+                                        </div>
+                                        ${p.notes ? `<div class="problem-notes">${escapeHtml(p.notes)}</div>` : ''}
+                                    </div>
+                                    <div class="problem-actions">
+                                        <button class="problem-action-btn" onclick="openProblemModal('${task.id}', ${i})" title="Edit">✎</button>
+                                    </div>
+                                </div>
+                            `).join('')}
                         </div>
                     </div>
                 `;
             }).join('');
+
+            // Add drag and drop listeners
+            document.querySelectorAll('.task-card').forEach(card => {
+                card.addEventListener('dragstart', handleDragStart);
+                card.addEventListener('dragend', handleDragEnd);
+                card.addEventListener('dragover', handleDragOver);
+                card.addEventListener('drop', handleDrop);
+                card.addEventListener('dragleave', handleDragLeave);
+            });
+        }
+
+        function escapeHtml(text) {
+            const div = document.createElement('div');
+            div.textContent = text;
+            return div.innerHTML;
+        }
+
+        // Drag and Drop
+        function handleDragStart(e) {
+            draggedCard = this;
+            this.classList.add('dragging');
+            e.dataTransfer.effectAllowed = 'move';
+        }
+
+        function handleDragEnd(e) {
+            this.classList.remove('dragging');
+            document.querySelectorAll('.task-card').forEach(card => {
+                card.classList.remove('drag-over');
+            });
+            draggedCard = null;
+        }
+
+        function handleDragOver(e) {
+            e.preventDefault();
+            if (this !== draggedCard) {
+                this.classList.add('drag-over');
+            }
+        }
+
+        function handleDragLeave(e) {
+            this.classList.remove('drag-over');
+        }
+
+        function handleDrop(e) {
+            e.preventDefault();
+            this.classList.remove('drag-over');
+
+            if (draggedCard && this !== draggedCard) {
+                const draggedId = draggedCard.dataset.id;
+                const targetId = this.dataset.id;
+
+                const draggedTask = tasks.find(t => t.id === draggedId);
+                const targetTask = tasks.find(t => t.id === targetId);
+
+                if (draggedTask && targetTask) {
+                    saveWithUndo();
+                    const tempOrder = draggedTask.order || Date.now();
+                    draggedTask.order = targetTask.order || Date.now() + 1;
+                    targetTask.order = tempOrder;
+                    saveTasks();
+                    render();
+                }
+            }
         }
 
         // Actions
+        function toggleProblems(taskId) {
+            const list = document.getElementById(`problems-${taskId}`);
+            list.classList.toggle('expanded');
+            const toggle = list.previousElementSibling;
+            toggle.querySelector('.toggle-arrow').textContent = list.classList.contains('expanded') ? '▲' : '▼';
+        }
+
+        function toggleProblem(taskId, index) {
+            const task = tasks.find(t => t.id === taskId);
+            if (task) {
+                saveWithUndo();
+                task.problems[index].completed = !task.problems[index].completed;
+                saveTasks();
+                render();
+                updateStats();
+            }
+        }
+
+        function toggleArchive(taskId) {
+            const task = tasks.find(t => t.id === taskId);
+            if (task) {
+                saveWithUndo();
+                task.archived = !task.archived;
+                saveTasks();
+                render();
+                updateStats();
+            }
+        }
+
         function openModal(taskId = null) {
             editingId = taskId;
-            
+
             if (taskId) {
                 const task = tasks.find(t => t.id === taskId);
                 modalTitle.textContent = 'Edit Problem Set';
                 nameInput.value = task.name;
-                problemsInput.value = task.total;
+                courseInput.value = task.course || '';
+                problemsInput.value = task.problems.length;
                 dueInput.value = task.dueDate;
-                startInput.value = task.startDate;
             } else {
                 modalTitle.textContent = 'Add Problem Set';
                 nameInput.value = '';
+                courseInput.value = '';
                 problemsInput.value = 5;
                 dueInput.value = '';
-                startInput.value = new Date().toISOString().split('T')[0];
             }
-            
+
             modal.classList.add('active');
             nameInput.focus();
         }
@@ -525,77 +1517,218 @@
 
         function saveTask() {
             const name = nameInput.value.trim();
+            const course = courseInput.value.trim();
             const total = parseInt(problemsInput.value) || 1;
             const dueDate = dueInput.value;
-            const startDate = startInput.value || new Date().toISOString().split('T')[0];
 
             if (!name || !dueDate) {
                 alert('Please fill in name and due date');
                 return;
             }
 
+            saveWithUndo();
+
             if (editingId) {
                 const task = tasks.find(t => t.id === editingId);
                 task.name = name;
-                task.total = total;
+                task.course = course;
                 task.dueDate = dueDate;
-                task.startDate = startDate;
-                task.completed = Math.min(task.completed, total);
+
+                const currentCount = task.problems.length;
+                if (total > currentCount) {
+                    for (let i = currentCount; i < total; i++) {
+                        task.problems.push({ completed: false, timeSpent: 0, difficulty: null, notes: '' });
+                    }
+                } else if (total < currentCount) {
+                    task.problems = task.problems.slice(0, total);
+                }
             } else {
+                const problems = [];
+                for (let i = 0; i < total; i++) {
+                    problems.push({ completed: false, timeSpent: 0, difficulty: null, notes: '' });
+                }
                 tasks.push({
                     id: Date.now().toString(),
                     name,
-                    total,
-                    completed: 0,
+                    course,
                     dueDate,
-                    startDate
+                    startDate: new Date().toISOString().split('T')[0],
+                    archived: false,
+                    problems,
+                    order: Date.now()
                 });
             }
 
             saveTasks();
             render();
+            updateStats();
+            updateCourseFilter();
             closeModal();
         }
 
         function deleteTask(id) {
             if (confirm('Delete this problem set?')) {
+                saveWithUndo();
                 tasks = tasks.filter(t => t.id !== id);
                 saveTasks();
                 render();
+                updateStats();
+                updateCourseFilter();
             }
         }
 
-        function updateProgress(id, delta) {
-            const task = tasks.find(t => t.id === id);
-            task.completed = Math.max(0, Math.min(task.total, task.completed + delta));
+        // Problem Modal
+        function openProblemModal(taskId, index) {
+            editingProblem = { taskId, index };
+            const task = tasks.find(t => t.id === taskId);
+            const problem = task.problems[index];
+
+            problemModalTitle.textContent = `Edit Problem ${index + 1}`;
+
+            difficultySelect.querySelectorAll('.difficulty-option').forEach(opt => {
+                opt.classList.remove('selected');
+                if (opt.dataset.difficulty === problem.difficulty) {
+                    opt.classList.add('selected');
+                }
+            });
+
+            problemTime.value = problem.timeSpent || 0;
+            problemNotes.value = problem.notes || '';
+
+            problemModal.classList.add('active');
+        }
+
+        function closeProblemModal() {
+            problemModal.classList.remove('active');
+            editingProblem = null;
+        }
+
+        function saveProblem() {
+            if (!editingProblem) return;
+
+            const task = tasks.find(t => t.id === editingProblem.taskId);
+            const problem = task.problems[editingProblem.index];
+
+            saveWithUndo();
+
+            const selectedDiff = difficultySelect.querySelector('.difficulty-option.selected');
+            problem.difficulty = selectedDiff ? selectedDiff.dataset.difficulty : null;
+            problem.timeSpent = parseInt(problemTime.value) || 0;
+            problem.notes = problemNotes.value.trim();
+
             saveTasks();
             render();
+            updateStats();
+            closeProblemModal();
+        }
+
+        // Sync Modal
+        function openSyncModal() {
+            // Update UI based on connection state
+            if (syncEnabled) {
+                syncConnected.style.display = 'flex';
+                setupForm.style.display = 'none';
+                syncConnect.style.display = 'none';
+                syncDisconnect.style.display = 'block';
+            } else {
+                syncConnected.style.display = 'none';
+                setupForm.style.display = 'block';
+                syncConnect.style.display = 'block';
+                syncDisconnect.style.display = 'none';
+            }
+            syncModal.classList.add('active');
+        }
+
+        function closeSyncModal() {
+            syncModal.classList.remove('active');
+        }
+
+        function handleConnect() {
+            const configText = firebaseConfigInput.value.trim();
+            if (!configText) {
+                alert('Please paste your Firebase config');
+                return;
+            }
+
+            try {
+                const config = parseFirebaseConfig(configText);
+                connectFirebase(config);
+
+                // Initial sync - push local data to cloud
+                syncToFirebase();
+            } catch (e) {
+                alert('Invalid config format. Please paste the firebaseConfig object from Firebase console.');
+                console.error(e);
+            }
         }
 
         // Event Listeners
         addBtn.addEventListener('click', () => openModal());
         cancelBtn.addEventListener('click', closeModal);
         saveBtn.addEventListener('click', saveTask);
-        
+        undoBtn.addEventListener('click', undo);
+        syncStatus.addEventListener('click', openSyncModal);
+        syncClose.addEventListener('click', closeSyncModal);
+        syncConnect.addEventListener('click', handleConnect);
+        syncDisconnect.addEventListener('click', () => {
+            if (confirm('Disconnect from cloud sync? Your local data will be kept.')) {
+                disconnectFirebase();
+            }
+        });
+        problemCancel.addEventListener('click', closeProblemModal);
+        problemSave.addEventListener('click', saveProblem);
+
         modal.addEventListener('click', (e) => {
             if (e.target === modal) closeModal();
         });
 
-        document.addEventListener('keydown', (e) => {
-            if (e.key === 'Escape') closeModal();
-            if (e.key === 'Enter' && modal.classList.contains('active')) saveTask();
+        syncModal.addEventListener('click', (e) => {
+            if (e.target === syncModal) closeSyncModal();
         });
 
-        // Make task cards clickable for editing
-        tasksContainer.addEventListener('dblclick', (e) => {
-            const card = e.target.closest('.task-card');
-            if (card && !e.target.closest('button')) {
-                openModal(card.dataset.id);
+        problemModal.addEventListener('click', (e) => {
+            if (e.target === problemModal) closeProblemModal();
+        });
+
+        document.addEventListener('keydown', (e) => {
+            if (e.key === 'Escape') {
+                closeModal();
+                closeSyncModal();
+                closeProblemModal();
+            }
+            if (e.key === 'Enter' && modal.classList.contains('active')) saveTask();
+            if (e.key === 'z' && (e.ctrlKey || e.metaKey)) {
+                e.preventDefault();
+                undo();
             }
         });
 
-        // Initial render
-        render();
+        difficultySelect.addEventListener('click', (e) => {
+            const option = e.target.closest('.difficulty-option');
+            if (option) {
+                difficultySelect.querySelectorAll('.difficulty-option').forEach(opt => {
+                    opt.classList.remove('selected');
+                });
+                option.classList.add('selected');
+            }
+        });
+
+        document.querySelectorAll('.filter-btn').forEach(btn => {
+            btn.addEventListener('click', () => {
+                document.querySelectorAll('.filter-btn').forEach(b => b.classList.remove('active'));
+                btn.classList.add('active');
+                currentFilter = btn.dataset.filter;
+                render();
+            });
+        });
+
+        courseFilter.addEventListener('change', (e) => {
+            currentCourse = e.target.value;
+            render();
+        });
+
+        // Initialize
+        init();
     </script>
 </body>
 </html>
