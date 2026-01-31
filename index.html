@@ -999,7 +999,6 @@
         }
 
         function parseFirebaseConfig(input) {
-            // Try to extract the config object from various formats
             let configStr = input.trim();
 
             // Remove variable declaration if present
@@ -1008,14 +1007,33 @@
             // Remove trailing semicolon
             configStr = configStr.replace(/;$/, '');
 
-            // Try to parse as JSON (may need to add quotes to keys)
+            // Try to parse as JSON first
             try {
                 return JSON.parse(configStr);
             } catch (e) {
-                // Try to convert JS object literal to JSON
-                configStr = configStr.replace(/(\w+):/g, '"$1":');
+                // Convert JS object literal to JSON
+                // Only quote keys (words followed by colon at start of line or after { or ,)
+                configStr = configStr.replace(/([{,]\s*)(\w+)\s*:/g, '$1"$2":');
+                // Handle first key if no leading brace captured
+                configStr = configStr.replace(/^\s*{\s*(\w+)\s*:/, '{ "$1":');
+                // Replace single quotes with double quotes for values
                 configStr = configStr.replace(/'/g, '"');
-                return JSON.parse(configStr);
+
+                try {
+                    return JSON.parse(configStr);
+                } catch (e2) {
+                    // Last resort: extract key-value pairs manually
+                    const config = {};
+                    const keyValueRegex = /(\w+)\s*:\s*["']([^"']+)["']/g;
+                    let match;
+                    while ((match = keyValueRegex.exec(input)) !== null) {
+                        config[match[1]] = match[2];
+                    }
+                    if (Object.keys(config).length > 0) {
+                        return config;
+                    }
+                    throw new Error('Could not parse config');
+                }
             }
         }
 
