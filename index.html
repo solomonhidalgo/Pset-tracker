@@ -8,6 +8,11 @@
     <meta name="theme-color" content="#1a1a2e">
     <title>PSet Tracker</title>
     <link rel="manifest" href="data:application/json,{&quot;name&quot;:&quot;PSet Tracker&quot;,&quot;short_name&quot;:&quot;PSets&quot;,&quot;start_url&quot;:&quot;.&quot;,&quot;display&quot;:&quot;standalone&quot;,&quot;background_color&quot;:&quot;%231a1a2e&quot;,&quot;theme_color&quot;:&quot;%231a1a2e&quot;}">
+
+    <!-- Firebase SDK -->
+    <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore-compat.js"></script>
+
     <style>
         * {
             box-sizing: border-box;
@@ -45,6 +50,7 @@
         .header-actions {
             display: flex;
             gap: 8px;
+            align-items: center;
         }
 
         .header-btn {
@@ -70,6 +76,46 @@
         .header-btn.undo:disabled {
             opacity: 0.4;
             cursor: not-allowed;
+        }
+
+        /* Sync Status */
+        .sync-status {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            font-size: 0.8rem;
+            padding: 6px 10px;
+            border-radius: 20px;
+            background: #2a2a4a;
+        }
+
+        .sync-dot {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            background: #666;
+        }
+
+        .sync-status.synced .sync-dot {
+            background: #4ade80;
+        }
+
+        .sync-status.syncing .sync-dot {
+            background: #fbbf24;
+            animation: pulse 1s infinite;
+        }
+
+        .sync-status.offline .sync-dot {
+            background: #f87171;
+        }
+
+        .sync-status.not-setup .sync-dot {
+            background: #666;
+        }
+
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.5; }
         }
 
         /* Stats Panel */
@@ -612,37 +658,53 @@
             border: 1px dashed #3a3a5a;
         }
 
-        /* Share Modal */
-        .share-url {
+        /* Setup instructions */
+        .setup-instructions {
             background: #2a2a4a;
+            border-radius: 8px;
+            padding: 16px;
+            margin-bottom: 16px;
+            font-size: 0.9rem;
+            line-height: 1.6;
+        }
+
+        .setup-instructions ol {
+            margin-left: 20px;
+            margin-top: 8px;
+        }
+
+        .setup-instructions li {
+            margin-bottom: 8px;
+        }
+
+        .setup-instructions a {
+            color: #667eea;
+        }
+
+        .setup-instructions code {
+            background: #1a1a2e;
+            padding: 2px 6px;
+            border-radius: 4px;
+            font-size: 0.85rem;
+        }
+
+        /* Config textarea */
+        .config-textarea {
+            width: 100%;
+            min-height: 150px;
+            padding: 12px;
             border: 1px solid #3a3a5a;
             border-radius: 8px;
-            padding: 12px;
-            word-break: break-all;
-            font-size: 0.85rem;
-            color: #a0a0a0;
-            margin: 12px 0;
-            max-height: 100px;
-            overflow-y: auto;
-        }
-
-        .copy-btn {
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            background: #2a2a4a;
             color: #fff;
-            border: none;
-            padding: 10px 20px;
-            border-radius: 8px;
-            cursor: pointer;
-            font-size: 0.9rem;
-            width: 100%;
+            font-family: monospace;
+            font-size: 0.85rem;
+            resize: vertical;
         }
 
-        .copy-btn:hover {
-            opacity: 0.9;
-        }
-
-        .copy-btn.copied {
-            background: #22c55e;
+        .config-textarea:focus {
+            outline: none;
+            border-color: #667eea;
         }
 
         /* Problem Edit Modal */
@@ -688,6 +750,19 @@
             background: #ef444422;
         }
 
+        .sync-connected {
+            background: #22c55e22;
+            border: 1px solid #4ade80;
+            border-radius: 8px;
+            padding: 12px;
+            margin-bottom: 16px;
+            color: #4ade80;
+            font-size: 0.9rem;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
         /* Responsive */
         @media (max-width: 500px) {
             .stats-panel {
@@ -697,6 +772,10 @@
             .form-row {
                 grid-template-columns: 1fr;
             }
+
+            .header-actions {
+                flex-wrap: wrap;
+            }
         }
     </style>
 </head>
@@ -705,8 +784,11 @@
         <header>
             <h1>📚 PSet Tracker</h1>
             <div class="header-actions">
+                <div class="sync-status not-setup" id="sync-status" title="Click to setup sync">
+                    <span class="sync-dot"></span>
+                    <span class="sync-text">Not synced</span>
+                </div>
                 <button class="header-btn undo" id="undo-btn" disabled title="Undo last action">↶ Undo</button>
-                <button class="header-btn" id="share-btn" title="Share/Sync">Share</button>
             </div>
         </header>
 
@@ -777,23 +859,45 @@
         </div>
     </div>
 
-    <!-- Share Modal -->
-    <div class="modal-overlay" id="share-modal">
+    <!-- Sync Setup Modal -->
+    <div class="modal-overlay" id="sync-modal">
         <div class="modal">
-            <h2>Share / Sync Data</h2>
-            <p style="color: #a0a0a0; font-size: 0.9rem; margin-bottom: 16px;">
-                Copy this link and open it on another device to sync your data.
-                The link contains all your current tasks.
-            </p>
-            <div class="share-url" id="share-url"></div>
-            <button class="copy-btn" id="copy-btn">Copy Link</button>
-            <div style="margin-top: 20px; padding-top: 20px; border-top: 1px solid #3a3a5a;">
-                <p style="color: #a0a0a0; font-size: 0.9rem; margin-bottom: 12px;">Or paste a shared link to import:</p>
-                <input type="text" id="import-url" placeholder="Paste link here..." style="width: 100%; padding: 12px; border: 1px solid #3a3a5a; border-radius: 8px; background: #2a2a4a; color: #fff; font-size: 0.9rem; margin-bottom: 12px;">
-                <button class="btn-save" id="import-btn" style="width: 100%;">Import Data</button>
+            <h2>Setup Cloud Sync</h2>
+
+            <div class="sync-connected" id="sync-connected" style="display: none;">
+                ✓ Connected and syncing
             </div>
+
+            <div id="setup-form">
+                <div class="setup-instructions">
+                    <strong>One-time setup (5 minutes):</strong>
+                    <ol>
+                        <li>Go to <a href="https://console.firebase.google.com/" target="_blank">Firebase Console</a></li>
+                        <li>Click "Create a project" (or use existing)</li>
+                        <li>Once created, click the web icon <code>&lt;/&gt;</code> to add a web app</li>
+                        <li>Give it a nickname (e.g., "PSet Tracker")</li>
+                        <li>Copy the <code>firebaseConfig</code> object and paste below</li>
+                        <li>Go to "Firestore Database" in sidebar → "Create database" → Start in test mode</li>
+                    </ol>
+                </div>
+
+                <div class="form-group">
+                    <label>Paste your Firebase config here:</label>
+                    <textarea class="config-textarea" id="firebase-config" placeholder='const firebaseConfig = {
+  apiKey: "...",
+  authDomain: "...",
+  projectId: "...",
+  storageBucket: "...",
+  messagingSenderId: "...",
+  appId: "..."
+};'></textarea>
+                </div>
+            </div>
+
             <div class="modal-actions">
-                <button class="btn-cancel" id="share-close">Close</button>
+                <button class="btn-cancel" id="sync-close">Close</button>
+                <button class="btn-save" id="sync-connect">Connect</button>
+                <button class="btn-danger" id="sync-disconnect" style="display: none;">Disconnect</button>
             </div>
         </div>
     </div>
@@ -830,10 +934,16 @@
         let tasks = [];
         let undoStack = [];
         let editingId = null;
-        let editingProblem = null; // { taskId, problemIndex }
+        let editingProblem = null;
         let currentFilter = 'active';
         let currentCourse = '';
         let draggedCard = null;
+
+        // Firebase state
+        let db = null;
+        let unsubscribe = null;
+        let syncEnabled = false;
+        let isRemoteUpdate = false;
 
         // Elements
         const tasksContainer = document.getElementById('tasks');
@@ -848,13 +958,14 @@
         const problemsInput = document.getElementById('task-problems');
         const dueInput = document.getElementById('task-due');
         const undoBtn = document.getElementById('undo-btn');
-        const shareBtn = document.getElementById('share-btn');
-        const shareModal = document.getElementById('share-modal');
-        const shareUrl = document.getElementById('share-url');
-        const copyBtn = document.getElementById('copy-btn');
-        const importUrl = document.getElementById('import-url');
-        const importBtn = document.getElementById('import-btn');
-        const shareClose = document.getElementById('share-close');
+        const syncStatus = document.getElementById('sync-status');
+        const syncModal = document.getElementById('sync-modal');
+        const syncConnected = document.getElementById('sync-connected');
+        const setupForm = document.getElementById('setup-form');
+        const firebaseConfigInput = document.getElementById('firebase-config');
+        const syncClose = document.getElementById('sync-close');
+        const syncConnect = document.getElementById('sync-connect');
+        const syncDisconnect = document.getElementById('sync-disconnect');
         const problemModal = document.getElementById('problem-modal');
         const problemModalTitle = document.getElementById('problem-modal-title');
         const difficultySelect = document.getElementById('difficulty-select');
@@ -868,10 +979,160 @@
         // Initialize
         function init() {
             loadTasks();
-            checkUrlImport();
+            initFirebase();
             render();
             updateStats();
             updateCourseFilter();
+        }
+
+        // Firebase functions
+        function initFirebase() {
+            const savedConfig = localStorage.getItem('firebase-config');
+            if (savedConfig) {
+                try {
+                    connectFirebase(JSON.parse(savedConfig));
+                } catch (e) {
+                    console.error('Failed to init Firebase:', e);
+                    updateSyncStatus('offline');
+                }
+            }
+        }
+
+        function parseFirebaseConfig(input) {
+            // Try to extract the config object from various formats
+            let configStr = input.trim();
+
+            // Remove variable declaration if present
+            configStr = configStr.replace(/^(const|let|var)\s+\w+\s*=\s*/, '');
+
+            // Remove trailing semicolon
+            configStr = configStr.replace(/;$/, '');
+
+            // Try to parse as JSON (may need to add quotes to keys)
+            try {
+                return JSON.parse(configStr);
+            } catch (e) {
+                // Try to convert JS object literal to JSON
+                configStr = configStr.replace(/(\w+):/g, '"$1":');
+                configStr = configStr.replace(/'/g, '"');
+                return JSON.parse(configStr);
+            }
+        }
+
+        function connectFirebase(config) {
+            try {
+                // Initialize Firebase
+                if (!firebase.apps.length) {
+                    firebase.initializeApp(config);
+                }
+                db = firebase.firestore();
+
+                // Save config for future use
+                localStorage.setItem('firebase-config', JSON.stringify(config));
+
+                // Setup real-time listener
+                setupRealtimeSync();
+
+                syncEnabled = true;
+                updateSyncStatus('synced');
+
+                // Update modal UI
+                syncConnected.style.display = 'flex';
+                setupForm.style.display = 'none';
+                syncConnect.style.display = 'none';
+                syncDisconnect.style.display = 'block';
+
+            } catch (e) {
+                console.error('Firebase connection error:', e);
+                alert('Failed to connect: ' + e.message);
+                updateSyncStatus('offline');
+            }
+        }
+
+        function setupRealtimeSync() {
+            // Use a fixed document for this user's data
+            const docRef = db.collection('pset-tracker').doc('user-data');
+
+            // Listen for changes
+            unsubscribe = docRef.onSnapshot((doc) => {
+                if (doc.exists) {
+                    const data = doc.data();
+                    if (data.tasks && data.lastUpdated) {
+                        const localLastUpdated = localStorage.getItem('last-updated') || '0';
+
+                        // Only update if remote is newer and not our own update
+                        if (data.lastUpdated > localLastUpdated && !isRemoteUpdate) {
+                            isRemoteUpdate = true;
+                            tasks = data.tasks;
+                            localStorage.setItem('pset-tasks-v2', JSON.stringify(tasks));
+                            localStorage.setItem('last-updated', data.lastUpdated);
+                            render();
+                            updateStats();
+                            updateCourseFilter();
+                            isRemoteUpdate = false;
+                        }
+                    }
+                }
+                updateSyncStatus('synced');
+            }, (error) => {
+                console.error('Firestore error:', error);
+                updateSyncStatus('offline');
+            });
+        }
+
+        async function syncToFirebase() {
+            if (!syncEnabled || !db) return;
+
+            updateSyncStatus('syncing');
+
+            try {
+                const timestamp = Date.now().toString();
+                await db.collection('pset-tracker').doc('user-data').set({
+                    tasks: tasks,
+                    lastUpdated: timestamp
+                });
+                localStorage.setItem('last-updated', timestamp);
+                updateSyncStatus('synced');
+            } catch (e) {
+                console.error('Sync error:', e);
+                updateSyncStatus('offline');
+            }
+        }
+
+        function disconnectFirebase() {
+            if (unsubscribe) {
+                unsubscribe();
+                unsubscribe = null;
+            }
+            syncEnabled = false;
+            db = null;
+            localStorage.removeItem('firebase-config');
+            updateSyncStatus('not-setup');
+
+            // Update modal UI
+            syncConnected.style.display = 'none';
+            setupForm.style.display = 'block';
+            syncConnect.style.display = 'block';
+            syncDisconnect.style.display = 'none';
+            firebaseConfigInput.value = '';
+        }
+
+        function updateSyncStatus(status) {
+            syncStatus.className = 'sync-status ' + status;
+            const textEl = syncStatus.querySelector('.sync-text');
+            switch (status) {
+                case 'synced':
+                    textEl.textContent = 'Synced';
+                    break;
+                case 'syncing':
+                    textEl.textContent = 'Syncing...';
+                    break;
+                case 'offline':
+                    textEl.textContent = 'Offline';
+                    break;
+                default:
+                    textEl.textContent = 'Not synced';
+            }
         }
 
         // Data persistence
@@ -911,6 +1172,9 @@
 
         function saveTasks() {
             localStorage.setItem('pset-tasks-v2', JSON.stringify(tasks));
+            if (syncEnabled && !isRemoteUpdate) {
+                syncToFirebase();
+            }
         }
 
         function saveWithUndo() {
@@ -928,48 +1192,6 @@
             updateStats();
             updateCourseFilter();
             undoBtn.disabled = undoStack.length === 0;
-        }
-
-        // URL sharing
-        function checkUrlImport() {
-            const hash = window.location.hash;
-            if (hash.startsWith('#data=')) {
-                try {
-                    const data = JSON.parse(atob(decodeURIComponent(hash.slice(6))));
-                    if (Array.isArray(data) && confirm('Import data from shared link? This will replace your current data.')) {
-                        tasks = data;
-                        saveTasks();
-                        window.location.hash = '';
-                    }
-                } catch (e) {
-                    console.error('Failed to import data:', e);
-                }
-            }
-        }
-
-        function generateShareUrl() {
-            const data = btoa(JSON.stringify(tasks));
-            return `${window.location.origin}${window.location.pathname}#data=${encodeURIComponent(data)}`;
-        }
-
-        function importFromUrl(url) {
-            try {
-                const match = url.match(/#data=(.+)/);
-                if (!match) throw new Error('Invalid URL');
-                const data = JSON.parse(atob(decodeURIComponent(match[1])));
-                if (!Array.isArray(data)) throw new Error('Invalid data');
-                if (confirm('Import this data? This will replace your current data.')) {
-                    saveWithUndo();
-                    tasks = data;
-                    saveTasks();
-                    render();
-                    updateStats();
-                    updateCourseFilter();
-                    closeShareModal();
-                }
-            } catch (e) {
-                alert('Failed to import: Invalid link format');
-            }
         }
 
         // Helpers
@@ -1012,7 +1234,6 @@
             let text;
 
             if (remaining <= daysLeft) {
-                // Less than or equal to 1 per day
                 if (remaining === daysLeft) {
                     text = '1/day';
                 } else {
@@ -1020,7 +1241,6 @@
                     text = `1 every ${interval} days`;
                 }
             } else {
-                // More than 1 per day
                 const basePerDay = Math.floor(remaining / daysLeft);
                 const extraDays = remaining % daysLeft;
 
@@ -1082,22 +1302,17 @@
             return tasks.filter(task => {
                 const completed = getCompletedCount(task) >= task.problems.length;
 
-                // Filter by status
                 if (currentFilter === 'active' && (task.archived || completed)) return false;
                 if (currentFilter === 'archived' && !task.archived) return false;
 
-                // Filter by course
                 if (currentCourse && task.course !== currentCourse) return false;
 
                 return true;
             }).sort((a, b) => {
-                // Archived at bottom
                 if (a.archived !== b.archived) return a.archived ? 1 : -1;
-                // Completed at bottom
                 const aComplete = getCompletedCount(a) >= a.problems.length;
                 const bComplete = getCompletedCount(b) >= b.problems.length;
                 if (aComplete !== bComplete) return aComplete ? 1 : -1;
-                // By manual order or due date
                 if (a.order && b.order) return a.order - b.order;
                 return new Date(a.dueDate) - new Date(b.dueDate);
             });
@@ -1234,7 +1449,6 @@
 
                 if (draggedTask && targetTask) {
                     saveWithUndo();
-                    // Swap orders
                     const tempOrder = draggedTask.order || Date.now();
                     draggedTask.order = targetTask.order || Date.now() + 1;
                     targetTask.order = tempOrder;
@@ -1320,7 +1534,6 @@
                 task.course = course;
                 task.dueDate = dueDate;
 
-                // Adjust problems array if count changed
                 const currentCount = task.problems.length;
                 if (total > currentCount) {
                     for (let i = currentCount; i < total; i++) {
@@ -1372,7 +1585,6 @@
 
             problemModalTitle.textContent = `Edit Problem ${index + 1}`;
 
-            // Reset difficulty selection
             difficultySelect.querySelectorAll('.difficulty-option').forEach(opt => {
                 opt.classList.remove('selected');
                 if (opt.dataset.difficulty === problem.difficulty) {
@@ -1410,28 +1622,44 @@
             closeProblemModal();
         }
 
-        // Share Modal
-        function openShareModal() {
-            shareUrl.textContent = generateShareUrl();
-            copyBtn.textContent = 'Copy Link';
-            copyBtn.classList.remove('copied');
-            importUrl.value = '';
-            shareModal.classList.add('active');
+        // Sync Modal
+        function openSyncModal() {
+            // Update UI based on connection state
+            if (syncEnabled) {
+                syncConnected.style.display = 'flex';
+                setupForm.style.display = 'none';
+                syncConnect.style.display = 'none';
+                syncDisconnect.style.display = 'block';
+            } else {
+                syncConnected.style.display = 'none';
+                setupForm.style.display = 'block';
+                syncConnect.style.display = 'block';
+                syncDisconnect.style.display = 'none';
+            }
+            syncModal.classList.add('active');
         }
 
-        function closeShareModal() {
-            shareModal.classList.remove('active');
+        function closeSyncModal() {
+            syncModal.classList.remove('active');
         }
 
-        function copyShareUrl() {
-            navigator.clipboard.writeText(shareUrl.textContent).then(() => {
-                copyBtn.textContent = 'Copied!';
-                copyBtn.classList.add('copied');
-                setTimeout(() => {
-                    copyBtn.textContent = 'Copy Link';
-                    copyBtn.classList.remove('copied');
-                }, 2000);
-            });
+        function handleConnect() {
+            const configText = firebaseConfigInput.value.trim();
+            if (!configText) {
+                alert('Please paste your Firebase config');
+                return;
+            }
+
+            try {
+                const config = parseFirebaseConfig(configText);
+                connectFirebase(config);
+
+                // Initial sync - push local data to cloud
+                syncToFirebase();
+            } catch (e) {
+                alert('Invalid config format. Please paste the firebaseConfig object from Firebase console.');
+                console.error(e);
+            }
         }
 
         // Event Listeners
@@ -1439,10 +1667,14 @@
         cancelBtn.addEventListener('click', closeModal);
         saveBtn.addEventListener('click', saveTask);
         undoBtn.addEventListener('click', undo);
-        shareBtn.addEventListener('click', openShareModal);
-        shareClose.addEventListener('click', closeShareModal);
-        copyBtn.addEventListener('click', copyShareUrl);
-        importBtn.addEventListener('click', () => importFromUrl(importUrl.value));
+        syncStatus.addEventListener('click', openSyncModal);
+        syncClose.addEventListener('click', closeSyncModal);
+        syncConnect.addEventListener('click', handleConnect);
+        syncDisconnect.addEventListener('click', () => {
+            if (confirm('Disconnect from cloud sync? Your local data will be kept.')) {
+                disconnectFirebase();
+            }
+        });
         problemCancel.addEventListener('click', closeProblemModal);
         problemSave.addEventListener('click', saveProblem);
 
@@ -1450,8 +1682,8 @@
             if (e.target === modal) closeModal();
         });
 
-        shareModal.addEventListener('click', (e) => {
-            if (e.target === shareModal) closeShareModal();
+        syncModal.addEventListener('click', (e) => {
+            if (e.target === syncModal) closeSyncModal();
         });
 
         problemModal.addEventListener('click', (e) => {
@@ -1461,7 +1693,7 @@
         document.addEventListener('keydown', (e) => {
             if (e.key === 'Escape') {
                 closeModal();
-                closeShareModal();
+                closeSyncModal();
                 closeProblemModal();
             }
             if (e.key === 'Enter' && modal.classList.contains('active')) saveTask();
@@ -1471,7 +1703,6 @@
             }
         });
 
-        // Difficulty selection
         difficultySelect.addEventListener('click', (e) => {
             const option = e.target.closest('.difficulty-option');
             if (option) {
@@ -1482,7 +1713,6 @@
             }
         });
 
-        // Filter buttons
         document.querySelectorAll('.filter-btn').forEach(btn => {
             btn.addEventListener('click', () => {
                 document.querySelectorAll('.filter-btn').forEach(b => b.classList.remove('active'));
