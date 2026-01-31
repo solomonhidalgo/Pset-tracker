@@ -999,42 +999,25 @@
         }
 
         function parseFirebaseConfig(input) {
-            let configStr = input.trim();
+            // Simple approach: extract each known Firebase config key
+            const config = {};
+            const keys = ['apiKey', 'authDomain', 'projectId', 'storageBucket', 'messagingSenderId', 'appId', 'measurementId'];
 
-            // Remove variable declaration if present
-            configStr = configStr.replace(/^(const|let|var)\s+\w+\s*=\s*/, '');
-
-            // Remove trailing semicolon
-            configStr = configStr.replace(/;$/, '');
-
-            // Try to parse as JSON first
-            try {
-                return JSON.parse(configStr);
-            } catch (e) {
-                // Convert JS object literal to JSON
-                // Only quote keys (words followed by colon at start of line or after { or ,)
-                configStr = configStr.replace(/([{,]\s*)(\w+)\s*:/g, '$1"$2":');
-                // Handle first key if no leading brace captured
-                configStr = configStr.replace(/^\s*{\s*(\w+)\s*:/, '{ "$1":');
-                // Replace single quotes with double quotes for values
-                configStr = configStr.replace(/'/g, '"');
-
-                try {
-                    return JSON.parse(configStr);
-                } catch (e2) {
-                    // Last resort: extract key-value pairs manually
-                    const config = {};
-                    const keyValueRegex = /(\w+)\s*:\s*["']([^"']+)["']/g;
-                    let match;
-                    while ((match = keyValueRegex.exec(input)) !== null) {
-                        config[match[1]] = match[2];
-                    }
-                    if (Object.keys(config).length > 0) {
-                        return config;
-                    }
-                    throw new Error('Could not parse config');
+            for (const key of keys) {
+                // Match key: "value" or key: 'value'
+                const regex = new RegExp(key + '\\s*:\\s*["\']([^"\']+)["\']');
+                const match = input.match(regex);
+                if (match) {
+                    config[key] = match[1];
                 }
             }
+
+            // Verify we got the required keys
+            if (config.apiKey && config.projectId) {
+                return config;
+            }
+
+            throw new Error('Could not find apiKey and projectId in config');
         }
 
         function connectFirebase(config) {
