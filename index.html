@@ -1,0 +1,601 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="theme-color" content="#1a1a2e">
+    <title>PSet Tracker</title>
+    <link rel="manifest" href="data:application/json,{&quot;name&quot;:&quot;PSet Tracker&quot;,&quot;short_name&quot;:&quot;PSets&quot;,&quot;start_url&quot;:&quot;.&quot;,&quot;display&quot;:&quot;standalone&quot;,&quot;background_color&quot;:&quot;%231a1a2e&quot;,&quot;theme_color&quot;:&quot;%231a1a2e&quot;}">
+    <style>
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, sans-serif;
+            background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
+            min-height: 100vh;
+            color: #e8e8e8;
+            padding: 20px;
+            padding-bottom: 100px;
+        }
+
+        .container {
+            max-width: 600px;
+            margin: 0 auto;
+        }
+
+        h1 {
+            text-align: center;
+            margin-bottom: 24px;
+            font-weight: 600;
+            font-size: 1.8rem;
+            color: #fff;
+        }
+
+        .add-btn {
+            position: fixed;
+            bottom: 24px;
+            right: 24px;
+            width: 56px;
+            height: 56px;
+            border-radius: 50%;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            border: none;
+            color: white;
+            font-size: 32px;
+            cursor: pointer;
+            box-shadow: 0 4px 15px rgba(102, 126, 234, 0.4);
+            transition: transform 0.2s, box-shadow 0.2s;
+            z-index: 100;
+        }
+
+        .add-btn:hover {
+            transform: scale(1.1);
+            box-shadow: 0 6px 20px rgba(102, 126, 234, 0.6);
+        }
+
+        .add-btn:active {
+            transform: scale(0.95);
+        }
+
+        /* Modal */
+        .modal-overlay {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: rgba(0, 0, 0, 0.7);
+            z-index: 200;
+            align-items: center;
+            justify-content: center;
+            padding: 20px;
+        }
+
+        .modal-overlay.active {
+            display: flex;
+        }
+
+        .modal {
+            background: #1f1f3a;
+            border-radius: 16px;
+            padding: 24px;
+            width: 100%;
+            max-width: 400px;
+            box-shadow: 0 10px 40px rgba(0, 0, 0, 0.5);
+        }
+
+        .modal h2 {
+            margin-bottom: 20px;
+            font-size: 1.3rem;
+        }
+
+        .form-group {
+            margin-bottom: 16px;
+        }
+
+        .form-group label {
+            display: block;
+            margin-bottom: 6px;
+            font-size: 0.9rem;
+            color: #a0a0a0;
+        }
+
+        .form-group input {
+            width: 100%;
+            padding: 12px;
+            border: 1px solid #3a3a5a;
+            border-radius: 8px;
+            background: #2a2a4a;
+            color: #fff;
+            font-size: 1rem;
+        }
+
+        .form-group input:focus {
+            outline: none;
+            border-color: #667eea;
+        }
+
+        .modal-actions {
+            display: flex;
+            gap: 12px;
+            margin-top: 24px;
+        }
+
+        .modal-actions button {
+            flex: 1;
+            padding: 12px;
+            border: none;
+            border-radius: 8px;
+            font-size: 1rem;
+            cursor: pointer;
+            transition: opacity 0.2s;
+        }
+
+        .btn-cancel {
+            background: #3a3a5a;
+            color: #fff;
+        }
+
+        .btn-save {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: #fff;
+        }
+
+        .modal-actions button:hover {
+            opacity: 0.9;
+        }
+
+        /* Task Cards */
+        .tasks {
+            display: flex;
+            flex-direction: column;
+            gap: 16px;
+        }
+
+        .task-card {
+            background: #1f1f3a;
+            border-radius: 12px;
+            padding: 16px;
+            box-shadow: 0 4px 15px rgba(0, 0, 0, 0.2);
+        }
+
+        .task-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: flex-start;
+            margin-bottom: 12px;
+        }
+
+        .task-name {
+            font-size: 1.1rem;
+            font-weight: 600;
+            color: #fff;
+        }
+
+        .task-due {
+            font-size: 0.8rem;
+            color: #a0a0a0;
+            margin-top: 4px;
+        }
+
+        .task-due.urgent {
+            color: #ff6b6b;
+        }
+
+        .task-due.soon {
+            color: #ffd93d;
+        }
+
+        .delete-btn {
+            background: none;
+            border: none;
+            color: #666;
+            cursor: pointer;
+            font-size: 1.2rem;
+            padding: 4px 8px;
+            transition: color 0.2s;
+        }
+
+        .delete-btn:hover {
+            color: #ff6b6b;
+        }
+
+        /* Progress Section */
+        .progress-section {
+            margin-bottom: 12px;
+        }
+
+        .progress-info {
+            display: flex;
+            justify-content: space-between;
+            margin-bottom: 8px;
+            font-size: 0.9rem;
+        }
+
+        .progress-count {
+            color: #667eea;
+            font-weight: 600;
+        }
+
+        .progress-percent {
+            color: #a0a0a0;
+        }
+
+        .progress-bar {
+            height: 8px;
+            background: #2a2a4a;
+            border-radius: 4px;
+            overflow: hidden;
+        }
+
+        .progress-fill {
+            height: 100%;
+            background: linear-gradient(90deg, #667eea 0%, #764ba2 100%);
+            border-radius: 4px;
+            transition: width 0.3s ease;
+        }
+
+        .progress-fill.complete {
+            background: linear-gradient(90deg, #4ade80 0%, #22c55e 100%);
+        }
+
+        /* Controls */
+        .task-controls {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            margin-top: 12px;
+        }
+
+        .counter-controls {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+
+        .counter-btn {
+            width: 36px;
+            height: 36px;
+            border-radius: 50%;
+            border: none;
+            background: #3a3a5a;
+            color: #fff;
+            font-size: 1.2rem;
+            cursor: pointer;
+            transition: background 0.2s;
+        }
+
+        .counter-btn:hover {
+            background: #4a4a6a;
+        }
+
+        .counter-btn:active {
+            background: #5a5a7a;
+        }
+
+        .counter-btn.plus {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        }
+
+        .counter-btn.plus:hover {
+            opacity: 0.9;
+        }
+
+        .pace-info {
+            font-size: 0.85rem;
+            color: #a0a0a0;
+            text-align: right;
+        }
+
+        .pace-value {
+            color: #667eea;
+            font-weight: 600;
+        }
+
+        .pace-info.on-track {
+            color: #4ade80;
+        }
+
+        .pace-info.behind {
+            color: #ff6b6b;
+        }
+
+        /* Empty State */
+        .empty-state {
+            text-align: center;
+            padding: 60px 20px;
+            color: #666;
+        }
+
+        .empty-state p {
+            margin-bottom: 8px;
+        }
+
+        .empty-state .hint {
+            font-size: 0.9rem;
+        }
+
+        /* Completed task */
+        .task-card.completed {
+            opacity: 0.7;
+        }
+
+        .task-card.completed .task-name {
+            text-decoration: line-through;
+            color: #4ade80;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>📚 PSet Tracker</h1>
+        <div class="tasks" id="tasks"></div>
+        <div class="empty-state" id="empty-state">
+            <p>No problem sets yet</p>
+            <p class="hint">Tap + to add one</p>
+        </div>
+    </div>
+
+    <button class="add-btn" id="add-btn">+</button>
+
+    <div class="modal-overlay" id="modal">
+        <div class="modal">
+            <h2 id="modal-title">Add Problem Set</h2>
+            <div class="form-group">
+                <label for="task-name">Assignment Name</label>
+                <input type="text" id="task-name" placeholder="e.g., Abstract Algebra HW 5">
+            </div>
+            <div class="form-group">
+                <label for="task-problems">Number of Problems</label>
+                <input type="number" id="task-problems" min="1" value="5">
+            </div>
+            <div class="form-group">
+                <label for="task-due">Due Date</label>
+                <input type="date" id="task-due">
+            </div>
+            <div class="form-group">
+                <label for="task-start">Start Date (optional)</label>
+                <input type="date" id="task-start">
+            </div>
+            <div class="modal-actions">
+                <button class="btn-cancel" id="btn-cancel">Cancel</button>
+                <button class="btn-save" id="btn-save">Save</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // State
+        let tasks = JSON.parse(localStorage.getItem('pset-tasks')) || [];
+        let editingId = null;
+
+        // Elements
+        const tasksContainer = document.getElementById('tasks');
+        const emptyState = document.getElementById('empty-state');
+        const modal = document.getElementById('modal');
+        const modalTitle = document.getElementById('modal-title');
+        const addBtn = document.getElementById('add-btn');
+        const cancelBtn = document.getElementById('btn-cancel');
+        const saveBtn = document.getElementById('btn-save');
+        const nameInput = document.getElementById('task-name');
+        const problemsInput = document.getElementById('task-problems');
+        const dueInput = document.getElementById('task-due');
+        const startInput = document.getElementById('task-start');
+
+        // Helpers
+        function saveTasks() {
+            localStorage.setItem('pset-tasks', JSON.stringify(tasks));
+        }
+
+        function formatDate(dateStr) {
+            const date = new Date(dateStr + 'T00:00:00');
+            return date.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' });
+        }
+
+        function getDaysUntil(dateStr) {
+            const today = new Date();
+            today.setHours(0, 0, 0, 0);
+            const due = new Date(dateStr + 'T00:00:00');
+            const diff = Math.ceil((due - today) / (1000 * 60 * 60 * 24));
+            return diff;
+        }
+
+        function getDaysBetween(startStr, endStr) {
+            const start = new Date(startStr + 'T00:00:00');
+            const end = new Date(endStr + 'T00:00:00');
+            return Math.max(1, Math.ceil((end - start) / (1000 * 60 * 60 * 24)));
+        }
+
+        function calculatePace(task) {
+            const remaining = task.total - task.completed;
+            const daysLeft = getDaysUntil(task.dueDate);
+            
+            if (remaining === 0) return { text: 'Done! 🎉', status: 'on-track' };
+            if (daysLeft <= 0) return { text: `${remaining} overdue!`, status: 'behind' };
+            
+            const pace = remaining / daysLeft;
+            
+            if (pace <= 1) {
+                return { text: `${pace.toFixed(1)}/day`, status: 'on-track' };
+            } else if (pace <= 2) {
+                return { text: `${pace.toFixed(1)}/day`, status: '' };
+            } else {
+                return { text: `${pace.toFixed(1)}/day`, status: 'behind' };
+            }
+        }
+
+        function getDueClass(daysUntil) {
+            if (daysUntil < 0) return 'urgent';
+            if (daysUntil <= 2) return 'urgent';
+            if (daysUntil <= 5) return 'soon';
+            return '';
+        }
+
+        function getDueText(daysUntil, dateStr) {
+            if (daysUntil < 0) return `Overdue by ${-daysUntil} day${-daysUntil !== 1 ? 's' : ''}`;
+            if (daysUntil === 0) return 'Due today';
+            if (daysUntil === 1) return 'Due tomorrow';
+            return `Due ${formatDate(dateStr)} (${daysUntil} days)`;
+        }
+
+        // Render
+        function render() {
+            emptyState.style.display = tasks.length === 0 ? 'block' : 'none';
+            
+            // Sort: incomplete first (by due date), then completed
+            const sorted = [...tasks].sort((a, b) => {
+                const aComplete = a.completed >= a.total;
+                const bComplete = b.completed >= b.total;
+                if (aComplete !== bComplete) return aComplete ? 1 : -1;
+                return new Date(a.dueDate) - new Date(b.dueDate);
+            });
+
+            tasksContainer.innerHTML = sorted.map(task => {
+                const percent = Math.round((task.completed / task.total) * 100);
+                const isComplete = task.completed >= task.total;
+                const daysUntil = getDaysUntil(task.dueDate);
+                const pace = calculatePace(task);
+                
+                return `
+                    <div class="task-card ${isComplete ? 'completed' : ''}" data-id="${task.id}">
+                        <div class="task-header">
+                            <div>
+                                <div class="task-name">${task.name}</div>
+                                <div class="task-due ${getDueClass(daysUntil)}">${getDueText(daysUntil, task.dueDate)}</div>
+                            </div>
+                            <button class="delete-btn" onclick="deleteTask('${task.id}')">×</button>
+                        </div>
+                        <div class="progress-section">
+                            <div class="progress-info">
+                                <span class="progress-count">${task.completed} / ${task.total} problems</span>
+                                <span class="progress-percent">${percent}%</span>
+                            </div>
+                            <div class="progress-bar">
+                                <div class="progress-fill ${isComplete ? 'complete' : ''}" style="width: ${percent}%"></div>
+                            </div>
+                        </div>
+                        <div class="task-controls">
+                            <div class="counter-controls">
+                                <button class="counter-btn" onclick="updateProgress('${task.id}', -1)">−</button>
+                                <button class="counter-btn plus" onclick="updateProgress('${task.id}', 1)">+</button>
+                            </div>
+                            <div class="pace-info ${pace.status}">
+                                Pace: <span class="pace-value">${pace.text}</span>
+                            </div>
+                        </div>
+                    </div>
+                `;
+            }).join('');
+        }
+
+        // Actions
+        function openModal(taskId = null) {
+            editingId = taskId;
+            
+            if (taskId) {
+                const task = tasks.find(t => t.id === taskId);
+                modalTitle.textContent = 'Edit Problem Set';
+                nameInput.value = task.name;
+                problemsInput.value = task.total;
+                dueInput.value = task.dueDate;
+                startInput.value = task.startDate;
+            } else {
+                modalTitle.textContent = 'Add Problem Set';
+                nameInput.value = '';
+                problemsInput.value = 5;
+                dueInput.value = '';
+                startInput.value = new Date().toISOString().split('T')[0];
+            }
+            
+            modal.classList.add('active');
+            nameInput.focus();
+        }
+
+        function closeModal() {
+            modal.classList.remove('active');
+            editingId = null;
+        }
+
+        function saveTask() {
+            const name = nameInput.value.trim();
+            const total = parseInt(problemsInput.value) || 1;
+            const dueDate = dueInput.value;
+            const startDate = startInput.value || new Date().toISOString().split('T')[0];
+
+            if (!name || !dueDate) {
+                alert('Please fill in name and due date');
+                return;
+            }
+
+            if (editingId) {
+                const task = tasks.find(t => t.id === editingId);
+                task.name = name;
+                task.total = total;
+                task.dueDate = dueDate;
+                task.startDate = startDate;
+                task.completed = Math.min(task.completed, total);
+            } else {
+                tasks.push({
+                    id: Date.now().toString(),
+                    name,
+                    total,
+                    completed: 0,
+                    dueDate,
+                    startDate
+                });
+            }
+
+            saveTasks();
+            render();
+            closeModal();
+        }
+
+        function deleteTask(id) {
+            if (confirm('Delete this problem set?')) {
+                tasks = tasks.filter(t => t.id !== id);
+                saveTasks();
+                render();
+            }
+        }
+
+        function updateProgress(id, delta) {
+            const task = tasks.find(t => t.id === id);
+            task.completed = Math.max(0, Math.min(task.total, task.completed + delta));
+            saveTasks();
+            render();
+        }
+
+        // Event Listeners
+        addBtn.addEventListener('click', () => openModal());
+        cancelBtn.addEventListener('click', closeModal);
+        saveBtn.addEventListener('click', saveTask);
+        
+        modal.addEventListener('click', (e) => {
+            if (e.target === modal) closeModal();
+        });
+
+        document.addEventListener('keydown', (e) => {
+            if (e.key === 'Escape') closeModal();
+            if (e.key === 'Enter' && modal.classList.contains('active')) saveTask();
+        });
+
+        // Make task cards clickable for editing
+        tasksContainer.addEventListener('dblclick', (e) => {
+            const card = e.target.closest('.task-card');
+            if (card && !e.target.closest('button')) {
+                openModal(card.dataset.id);
+            }
+        });
+
+        // Initial render
+        render();
+    </script>
+</body>
+</html>
